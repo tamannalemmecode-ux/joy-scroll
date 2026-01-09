@@ -17,7 +17,7 @@ migrate_working_dir/
 *.ipr
 *.iws
 .idea/
-.metadata/
+.metadata
 
 # Local Android config (contains keystore paths!)
 local.properties
