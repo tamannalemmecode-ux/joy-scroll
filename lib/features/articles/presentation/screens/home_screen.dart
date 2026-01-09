@@ -15,6 +15,7 @@ import 'package:good_news/features/articles/presentation/widgets/article_card_wi
 import 'package:good_news/features/articles/presentation/widgets/social_post_card_widget.dart';
 import 'package:good_news/features/articles/presentation/widgets/speed_dial_widget.dart';
 import 'package:video_player/video_player.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -43,25 +44,25 @@ class _HomeScreenState extends State<HomeScreen>
   int _currentIndex = 0;
   int? _selectedCategoryId;
   bool _isSpeedDialOpen = false;
+
   static const int SOCIAL_CATEGORY_ID = -1;
   static const int VIDEO_CATEGORY_ID = -2;
   static const int LOAD_MORE_THRESHOLD = 3;
   static const int PAGE_SIZE = 25;
   static const int PRELOAD_COUNT = 5;
   static const List<String> EXCLUDED_CATEGORIES = ['Education', 'Environment', 'International'];
+
   final PageController _pageController = PageController(keepPage: true, viewportFraction: 1.0);
   late AnimationController _animationController;
   late Animation<double> _rotationAnimation;
   late ScrollController _categoryScrollController;
+
   final Map<String, List<Map<String, dynamic>>> _postComments = {};
   final Map<String, bool> _showCommentsMap = {};
   final Map<String, bool> _isLoadingCommentsMap = {};
   final Map<String, TextEditingController> _commentControllers = {};
   final Set<String> _preloadedImages = {};
   List<Map<String, dynamic>> _categoryList = [];
-
-  // Track pause callbacks for all video widgets
-  final Map<String, VoidCallback?> _pauseCallbacks = {};
 
   @override
   void initState() {
@@ -166,7 +167,10 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       if (mounted) setState(() => _isLoadingMore = true);
       final response = await ApiService.getUnifiedFeed(
-          limit: PAGE_SIZE, cursor: _nextCursor, categoryId: _selectedCategoryId);
+        limit: PAGE_SIZE,
+        cursor: _nextCursor,
+        categoryId: _selectedCategoryId,
+      );
       if (!mounted) return;
       if (response['status'] == 'success') {
         final List<dynamic> items = response['items'] ?? [];
@@ -327,8 +331,6 @@ class _HomeScreenState extends State<HomeScreen>
   void _onPageChanged() {
     final page = _pageController.page?.round() ?? 0;
     if (page != _currentIndex && page < _displayedItems.length) {
-      _pauseAllVideos();
-
       setState(() => _currentIndex = page);
       final item = _displayedItems[page];
       if (item['type'] == 'article') {
@@ -344,16 +346,12 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  // 🔥 HORIZONTAL SWIPE HANDLER - Category change
   void _onHorizontalDragEnd(DragEndDetails details) {
     final dragEnd = details.primaryVelocity ?? 0;
-    if (dragEnd.abs() < 300) return; // Minimum swipe speed
-
+    if (dragEnd.abs() < 300) return;
     if (dragEnd < -300) {
-      // Swipe LEFT → Next category
       _switchToNextCategory();
     } else if (dragEnd > 300) {
-      // Swipe RIGHT → Previous category
       _switchToPreviousCategory();
     }
   }
@@ -395,7 +393,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _toggleSpeedDial() {
-    _pauseAllVideos();
     setState(() {
       _isSpeedDialOpen = !_isSpeedDialOpen;
       _isSpeedDialOpen ? _animationController.forward() : _animationController.reverse();
@@ -404,9 +401,6 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _selectCategory(int? categoryId, {bool jumpToPage = true}) async {
     if (categoryId == _selectedCategoryId) return;
-
-    _pauseAllVideos();
-
     setState(() {
       _selectedCategoryId = categoryId;
       _currentIndex = 0;
@@ -431,12 +425,6 @@ class _HomeScreenState extends State<HomeScreen>
     }
     if (_displayedItems.isNotEmpty && mounted) {
       _preloadImages(_displayedItems, 0);
-    }
-  }
-
-  void _pauseAllVideos() {
-    for (final callback in _pauseCallbacks.values) {
-      callback?.call();
     }
   }
 
@@ -579,9 +567,7 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
         final newComment = {
           'id': DateTime.now().millisecondsSinceEpoch,
           'author': userDisplayName ?? 'Me',
-          'avatar': (userDisplayName?.isNotEmpty ?? false)
-              ? userDisplayName![0].toUpperCase()
-              : 'M',
+          'avatar': (userDisplayName?.isNotEmpty ?? false) ? userDisplayName![0].toUpperCase() : 'M',
           'content': content,
           'timestamp': 'Just now',
           'created_at': DateTime.now().toIso8601String(),
@@ -593,9 +579,10 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('✅ Comment posted!'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 1)),
+            content: Text('✅ Comment posted!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 1),
+          ),
         );
       }
     } catch (e) {
@@ -660,7 +647,6 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
   }
 
   void _goToProfile() async {
-    _pauseAllVideos();
     final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
     if (result != null && result is Map && result['action'] == 'read_article') {
       _navigateToArticle(result['article_id']);
@@ -670,7 +656,6 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
   }
 
   void _goToSettings() async {
-    _pauseAllVideos();
     await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
     if (mounted) await _loadInitialData();
   }
@@ -713,7 +698,9 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                        color: Colors.black87, borderRadius: BorderRadius.circular(16)),
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -768,9 +755,10 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
               label: 'Add',
               isActive: false,
               onTap: () async {
-                _pauseAllVideos();
                 final result = await Navigator.push(
-                    context, MaterialPageRoute(builder: (context) => const CreatePostScreen()));
+                  context,
+                  MaterialPageRoute(builder: (context) => const CreatePostScreen()),
+                );
                 if (result == true && mounted) {
                   await _loadSocialPosts();
                   _updateDisplayedItems();
@@ -845,7 +833,6 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
     );
   }
 
-  // 🔥 MAIN CONTENT with HORIZONTAL SWIPE DETECTION
   Widget _buildMainContent(List<Map<String, dynamic>> categoryList) {
     return Column(
       children: [
@@ -860,10 +847,9 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
                 : _displayedItems.isEmpty
                 ? _buildEmptyState()
                 : GestureDetector(
-              // 🔥 HORIZONTAL SWIPE - Category change (like InShot)
               onHorizontalDragEnd: _onHorizontalDragEnd,
               child: PageView.builder(
-                scrollDirection: Axis.vertical, // ⬆️⬇️ Vertical scroll for articles
+                scrollDirection: Axis.vertical,
                 controller: _pageController,
                 physics: const ClampingScrollPhysics(),
                 itemCount: _displayedItems.length,
@@ -982,12 +968,6 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
         onToggleLike: () => _toggleLike(post),
         onToggleComments: () => _toggleCommentsForPost(post['id']),
         onShare: () => _shareArticle(post),
-        onPauseCallback: (VoidCallback pause) {
-          _pauseCallbacks[post['id']] = pause;
-        },
-        onDisposeCallback: () {
-          _pauseCallbacks.remove(post['id']);
-        },
       ),
     );
   }
@@ -1122,22 +1102,18 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
   }
 }
 
-// ==================== VIDEO POST WIDGET ====================
+// ==================== VIDEO POST WIDGET (बटन विना) ====================
 class _VideoPostWidget extends StatefulWidget {
   final Map<String, dynamic> post;
   final VoidCallback onToggleLike;
   final VoidCallback onToggleComments;
   final VoidCallback onShare;
-  final void Function(VoidCallback pauseCallback) onPauseCallback;
-  final VoidCallback onDisposeCallback;
 
   const _VideoPostWidget({
     required this.post,
     required this.onToggleLike,
     required this.onToggleComments,
     required this.onShare,
-    required this.onPauseCallback,
-    required this.onDisposeCallback,
     Key? key,
   }) : super(key: key);
 
@@ -1151,7 +1127,6 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
 
   VideoPlayerController? _controller;
   bool _isInitialized = false;
-  bool _showControls = true;
   bool _hasError = false;
 
   @override
@@ -1160,12 +1135,11 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeVideo();
     });
-    widget.onPauseCallback(_pauseVideo);
   }
 
   Future<void> _initializeVideo() async {
     try {
-      _controller = VideoPlayerController.asset(widget.post['video_url']);
+      _controller = VideoPlayerController.asset(widget.post['video_url'])..setVolume(1.0);
       await _controller!.initialize();
       if (mounted) {
         setState(() {
@@ -1173,8 +1147,7 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
           _hasError = false;
         });
         _controller!.setLooping(true);
-        _controller!.play();
-        Future.delayed(const Duration(seconds: 2), _hideControls);
+        _controller!.play(); // Always auto-play
       }
     } catch (e) {
       print('❌ Video error: $e');
@@ -1187,30 +1160,6 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
     }
   }
 
-  void _pauseVideo() {
-    if (_controller != null && _controller!.value.isPlaying) {
-      _controller!.pause();
-      if (mounted) {
-        setState(() {
-          _showControls = true;
-        });
-      }
-    }
-  }
-
-  void _hideControls() {
-    if (mounted && _controller != null && _controller!.value.isPlaying) {
-      setState(() => _showControls = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    widget.onDisposeCallback();
-    super.dispose();
-  }
-
   void _togglePlayPause() {
     if (_controller == null || !_isInitialized) return;
     if (_controller!.value.isPlaying) {
@@ -1218,160 +1167,169 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
     } else {
       _controller!.play();
     }
-    setState(() {
-      _showControls = true;
-    });
-    if (_controller!.value.isPlaying) {
-      Future.delayed(const Duration(seconds: 2), _hideControls);
-    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return GestureDetector(
-      onTap: _togglePlayPause,
-      child: Container(
-        color: Colors.black,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (_hasError)
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.white, size: 64),
-                    const SizedBox(height: 16),
-                    const Text('Video not available', style: TextStyle(color: Colors.white, fontSize: 16)),
-                  ],
-                ),
-              )
-            else if (!_isInitialized || _controller == null)
-              const Center(child: CircularProgressIndicator(color: Colors.white))
-            else
-              Center(
-                child: AspectRatio(
-                  aspectRatio: _controller!.value.aspectRatio,
-                  child: VideoPlayer(_controller!),
-                ),
-              ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 120,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.black87, Colors.transparent],
+    return VisibilityDetector(
+      key: Key(widget.post['id'].toString()),
+      onVisibilityChanged: (visibilityInfo) {
+        final visibleFraction = visibilityInfo.visibleFraction;
+        if (visibleFraction > 0.6) {
+          if (_controller != null && _isInitialized && !_controller!.value.isPlaying) {
+            _controller!.play();
+          }
+        } else {
+          if (_controller != null && _controller!.value.isPlaying) {
+            _controller!.pause();
+          }
+        }
+      },
+      child: GestureDetector(
+        onTap: _togglePlayPause,
+        child: Container(
+          color: Colors.black,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_hasError)
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.white, size: 64),
+                      const SizedBox(height: 16),
+                      const Text('Video not available', style: TextStyle(color: Colors.white, fontSize: 16)),
+                    ],
+                  ),
+                )
+              else if (!_isInitialized || _controller == null)
+                const Center(child: CircularProgressIndicator(color: Colors.white))
+              else
+                Center(
+                  child: AspectRatio(
+                    aspectRatio: _controller!.value.aspectRatio,
+                    child: VideoPlayer(_controller!),
                   ),
                 ),
-              ),
-            ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 220,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Colors.black87, Colors.transparent],
-                  ),
-                ),
-              ),
-            ),
-            if (_showControls && _isInitialized && _controller != null && !_controller!.value.isPlaying)
-              Center(
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
                 child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                  child: const Icon(Icons.play_arrow, color: Colors.white, size: 60),
+                  height: 120,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black87, Colors.transparent],
+                    ),
+                  ),
                 ),
               ),
-            Positioned(
-              bottom: 30,
-              left: 16,
-              right: 16,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 220,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [Colors.black87, Colors.transparent],
+                    ),
+                  ),
+                ),
+              ),
+              // ❌ NO PLAY/PAUSE BUTTON ANYWHERE — COMPLETELY REMOVED
+
+              Positioned(
+                bottom: 30,
+                left: 16,
+                right: 16,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 18,
+                                backgroundColor: Colors.white,
+                                child: Text(
+                                  widget.post['avatar'] as String,
+                                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Flexible(
+                                child: Text(
+                                  widget.post['author'],
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(widget.post['title'], style: const TextStyle(color: Colors.white, fontSize: 16)),
+                          const SizedBox(height: 6),
+                          Text(
+                            widget.post['content'],
+                            style: const TextStyle(color: Colors.white70),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatTimestamp(widget.post['created_at']),
+                            style: const TextStyle(color: Colors.white54, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor: Colors.white,
-                              child: Text(
-                                widget.post['avatar'] as String,
-                                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Flexible(
-                              child: Text(
-                                widget.post['author'],
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                        _buildActionButton(
+                          icon: widget.post['isLiked'] == true ? Icons.favorite : Icons.favorite_border,
+                          label: _formatCount(widget.post['likes']),
+                          color: widget.post['isLiked'] == true ? Colors.red : Colors.white,
+                          onTap: widget.onToggleLike,
                         ),
-                        const SizedBox(height: 12),
-                        Text(widget.post['title'], style: const TextStyle(color: Colors.white, fontSize: 16)),
-                        const SizedBox(height: 6),
-                        Text(
-                          widget.post['content'],
-                          style: const TextStyle(color: Colors.white70),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 20),
+                        _buildActionButton(
+                          icon: Icons.chat_bubble_outline,
+                          label: 'Comment',
+                          color: Colors.white,
+                          onTap: widget.onToggleComments,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatTimestamp(widget.post['created_at']),
-                          style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        const SizedBox(height: 20),
+                        _buildActionButton(
+                          icon: Icons.share_outlined,
+                          label: 'Share',
+                          color: Colors.white,
+                          onTap: widget.onShare,
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildActionButton(
-                        icon: widget.post['isLiked'] == true ? Icons.favorite : Icons.favorite_border,
-                        label: _formatCount(widget.post['likes']),
-                        color: widget.post['isLiked'] == true ? Colors.red : Colors.white,
-                        onTap: widget.onToggleLike,
-                      ),
-                      const SizedBox(height: 20),
-                      _buildActionButton(
-                        icon: Icons.chat_bubble_outline,
-                        label: 'Comment',
-                        color: Colors.white,
-                        onTap: widget.onToggleComments,
-                      ),
-                      const SizedBox(height: 20),
-                      _buildActionButton(
-                        icon: Icons.share_outlined,
-                        label: 'Share',
-                        color: Colors.white,
-                        onTap: widget.onShare,
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
