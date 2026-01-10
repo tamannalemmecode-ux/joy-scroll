@@ -53,6 +53,7 @@ app.*.map.json
 key.properties
 *.jks
 *.keystore
+.env
 
 # Logs & temp files
 *.tmp
