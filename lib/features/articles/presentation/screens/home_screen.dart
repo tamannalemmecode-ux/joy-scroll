@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // ✅ Ensure this is imported
 import 'package:good_news/core/services/api_service.dart';
 import 'package:good_news/core/services/user_service.dart';
 import 'package:good_news/core/services/preferences_service.dart';
@@ -45,18 +46,18 @@ class _HomeScreenState extends State<HomeScreen>
   int? _selectedCategoryId;
   bool _isSpeedDialOpen = false;
 
-  static const int SOCIAL_CATEGORY_ID = -1;
-  static const int VIDEO_CATEGORY_ID = -2;
-  static const int LOAD_MORE_THRESHOLD = 3;
-  static const int PAGE_SIZE = 25;
-  static const int PRELOAD_COUNT = 5;
-  static const List<String> EXCLUDED_CATEGORIES = ['Education', 'Environment', 'International'];
+  // 🔸 Removed static const — now using .env
+  late int _socialCategoryId;
+  late int _videoCategoryId;
+  late int _loadMoreThreshold;
+  late int _pageSize;
+  late int _preloadCount;
+  late List<String> _excludedCategories;
 
   final PageController _pageController = PageController(keepPage: true, viewportFraction: 1.0);
   late AnimationController _animationController;
   late Animation<double> _rotationAnimation;
   late ScrollController _categoryScrollController;
-
   final Map<String, List<Map<String, dynamic>>> _postComments = {};
   final Map<String, bool> _showCommentsMap = {};
   final Map<String, bool> _isLoadingCommentsMap = {};
@@ -67,11 +68,28 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+
+    // 🔸 Load .env values once at init
+    _loadEnvConfig();
+
     _categoryScrollController = ScrollController();
     _initializeAnimations();
     _refreshUserDisplayName();
     _loadInitialData();
     _pageController.addListener(_onPageChanged);
+  }
+
+  void _loadEnvConfig() {
+    _socialCategoryId = int.tryParse(dotenv.env['SOCIAL_CATEGORY_ID'] ?? '-1') ?? -1;
+    _videoCategoryId = int.tryParse(dotenv.env['VIDEO_CATEGORY_ID'] ?? '-2') ?? -2;
+    _loadMoreThreshold = int.tryParse(dotenv.env['LOAD_MORE_THRESHOLD'] ?? '3') ?? 3;
+    _pageSize = int.tryParse(dotenv.env['PAGE_SIZE'] ?? '25') ?? 25;
+    _preloadCount = int.tryParse(dotenv.env['PRELOAD_COUNT'] ?? '5') ?? 5;
+    _excludedCategories = (dotenv.env['EXCLUDED_CATEGORIES'] ?? '')
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
   }
 
   @override
@@ -97,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _preloadImages(List<Map<String, dynamic>> items, int startIndex) async {
     if (!mounted) return;
-    final endIndex = (startIndex + PRELOAD_COUNT).clamp(0, items.length);
+    final endIndex = (startIndex + _preloadCount).clamp(0, items.length); // 🔸 PRELOAD_COUNT → _preloadCount
     for (int i = startIndex; i < endIndex; i++) {
       if (i >= items.length) break;
       final item = items[i];
@@ -138,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen>
         final List<dynamic> categories = categoryResponse['categories'];
         _categoryMap = {
           for (final cat in categories)
-            if (!EXCLUDED_CATEGORIES.contains(cat['name']))
+            if (!_excludedCategories.contains(cat['name'])) // 🔸 EXCLUDED_CATEGORIES → _excludedCategories
               (cat['id'] as int): (cat['name'] ?? 'Unnamed') as String
         };
         _selectedCategoryIds =
@@ -167,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       if (mounted) setState(() => _isLoadingMore = true);
       final response = await ApiService.getUnifiedFeed(
-        limit: PAGE_SIZE,
+        limit: _pageSize, // 🔸 PAGE_SIZE → _pageSize
         cursor: _nextCursor,
         categoryId: _selectedCategoryId,
       );
@@ -201,9 +219,9 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       if (_selectedCategoryId == null) {
         _displayedItems = List.from(_allArticles);
-      } else if (_selectedCategoryId == SOCIAL_CATEGORY_ID) {
+      } else if (_selectedCategoryId == _socialCategoryId) { // 🔸 SOCIAL_CATEGORY_ID → _socialCategoryId
         _displayedItems = List.from(_socialPosts);
-      } else if (_selectedCategoryId == VIDEO_CATEGORY_ID) {
+      } else if (_selectedCategoryId == _videoCategoryId) { // 🔸 VIDEO_CATEGORY_ID → _videoCategoryId
         _displayedItems = List.from(_videoPosts);
       } else {
         _displayedItems = _allArticles
@@ -226,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen>
           setState(() {
             _socialPosts = postsList.map((post) => _formatSocialPost(post, locallyLikedPosts)).toList();
           });
-          if (_selectedCategoryId == SOCIAL_CATEGORY_ID) {
+          if (_selectedCategoryId == _socialCategoryId) {
             _updateDisplayedItems();
             _preloadImages(_socialPosts, 0);
           }
@@ -253,7 +271,7 @@ class _HomeScreenState extends State<HomeScreen>
       'created_at': post['created_at'],
       'likes': likesCount,
       'isLiked': apiLiked || localLiked,
-      'category_id': SOCIAL_CATEGORY_ID,
+      'category_id': _socialCategoryId, // 🔸
       'category': 'Social Posts',
       'image_url': post['image_url'],
     };
@@ -261,7 +279,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _loadVideoPosts() async {
     try {
-      final List<Map<String, dynamic>> localVideos = List.generate(16, (index) {
+      final maxVideos = int.tryParse(dotenv.env['MAX_LOCAL_VIDEOS'] ?? '16') ?? 16; // 🔸 From .env
+      final List<Map<String, dynamic>> localVideos = List.generate(maxVideos, (index) {
         final videoNum = index + 1;
         return {
           'type': 'video_post',
@@ -273,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen>
           'created_at': DateTime.now().subtract(Duration(hours: index * 2)).toIso8601String(),
           'likes': 100 + (index * 50),
           'isLiked': false,
-          'category_id': VIDEO_CATEGORY_ID,
+          'category_id': _videoCategoryId, // 🔸
           'category': 'Video',
           'video_url': 'assets/videos/ajay$videoNum.mp4',
         };
@@ -340,7 +359,7 @@ class _HomeScreenState extends State<HomeScreen>
         _preloadImages(_displayedItems, page + 1);
       }
       final remainingItems = _displayedItems.length - page;
-      if (remainingItems <= LOAD_MORE_THRESHOLD && _hasMore && !_isLoadingMore) {
+      if (remainingItems <= _loadMoreThreshold && _hasMore && !_isLoadingMore) { // 🔸 LOAD_MORE_THRESHOLD → _loadMoreThreshold
         _loadMoreArticles();
       }
     }
@@ -408,10 +427,10 @@ class _HomeScreenState extends State<HomeScreen>
     if (jumpToPage && _pageController.hasClients) {
       _pageController.jumpToPage(0);
     }
-    if (categoryId == SOCIAL_CATEGORY_ID) {
+    if (categoryId == _socialCategoryId) {
       if (_socialPosts.isEmpty) await _loadSocialPosts();
       _updateDisplayedItems();
-    } else if (categoryId == VIDEO_CATEGORY_ID) {
+    } else if (categoryId == _videoCategoryId) {
       if (_videoPosts.isEmpty) await _loadVideoPosts();
       _updateDisplayedItems();
     } else {
@@ -746,8 +765,8 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
               icon: Icons.video_library_outlined,
               activeIcon: Icons.video_library,
               label: 'Video',
-              isActive: _selectedCategoryId == VIDEO_CATEGORY_ID,
-              onTap: () => _selectCategory(VIDEO_CATEGORY_ID, jumpToPage: true),
+              isActive: _selectedCategoryId == _videoCategoryId,
+              onTap: () => _selectCategory(_videoCategoryId, jumpToPage: true),
             ),
             _buildNavItem(
               icon: Icons.add_circle_outline,
@@ -1014,9 +1033,9 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              _selectedCategoryId == SOCIAL_CATEGORY_ID
+              _selectedCategoryId == _socialCategoryId
                   ? Icons.people_outline
-                  : _selectedCategoryId == VIDEO_CATEGORY_ID
+                  : _selectedCategoryId == _videoCategoryId
                   ? Icons.video_library_outlined
                   : Icons.article_outlined,
               size: 64,
@@ -1024,9 +1043,9 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
             ),
             const SizedBox(height: 16),
             Text(
-              _selectedCategoryId == SOCIAL_CATEGORY_ID
+              _selectedCategoryId == _socialCategoryId
                   ? 'No social posts yet!'
-                  : _selectedCategoryId == VIDEO_CATEGORY_ID
+                  : _selectedCategoryId == _videoCategoryId
                   ? 'No videos yet!'
                   : 'No articles in this category!',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -1036,9 +1055,9 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
             ),
             const SizedBox(height: 8),
             Text(
-              _selectedCategoryId == SOCIAL_CATEGORY_ID
+              _selectedCategoryId == _socialCategoryId
                   ? 'Be the first to share something positive!'
-                  : _selectedCategoryId == VIDEO_CATEGORY_ID
+                  : _selectedCategoryId == _videoCategoryId
                   ? 'Add videos to see them here!'
                   : _hasMore
                   ? 'Loading...'
@@ -1050,7 +1069,7 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _selectedCategoryId == SOCIAL_CATEGORY_ID
+              onPressed: _selectedCategoryId == _socialCategoryId
                   ? () async {
                 final result = await Navigator.push(
                   context,
@@ -1061,14 +1080,14 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
                   _updateDisplayedItems();
                 }
               }
-                  : _selectedCategoryId == VIDEO_CATEGORY_ID
+                  : _selectedCategoryId == _videoCategoryId
                   ? null
                   : _handleRefresh,
-              icon: Icon(_selectedCategoryId == SOCIAL_CATEGORY_ID ? Icons.edit : Icons.refresh),
+              icon: Icon(_selectedCategoryId == _socialCategoryId ? Icons.edit : Icons.refresh),
               label: Text(
-                _selectedCategoryId == SOCIAL_CATEGORY_ID
+                _selectedCategoryId == _socialCategoryId
                     ? 'Create Post'
-                    : _selectedCategoryId == VIDEO_CATEGORY_ID
+                    : _selectedCategoryId == _videoCategoryId
                     ? 'Coming Soon'
                     : 'Refresh',
               ),
@@ -1087,7 +1106,7 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
   List<Map<String, dynamic>> _buildCategoryList() {
     final List<Map<String, dynamic>> categoryList = [
       {'id': null, 'name': 'All'},
-      {'id': SOCIAL_CATEGORY_ID, 'name': '👥 Social'},
+      {'id': _socialCategoryId, 'name': '👥 Social'}, // 🔸
     ];
     if (_selectedCategoryIds.isNotEmpty) {
       for (var categoryId in _selectedCategoryIds) {
@@ -1250,7 +1269,6 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
                 ),
               ),
               // ❌ NO PLAY/PAUSE BUTTON ANYWHERE — COMPLETELY REMOVED
-
               Positioned(
                 bottom: 30,
                 left: 16,

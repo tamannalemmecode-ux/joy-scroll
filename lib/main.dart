@@ -1,3 +1,4 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // ✅ Already there
 import 'package:flutter/material.dart';
 import 'package:good_news/responsive_app.dart';
 import 'package:good_news/features/authentication/presentation/screens/login_screen.dart';
@@ -8,8 +9,13 @@ import 'package:good_news/core/themes/app_theme.dart';
 
 import 'features/splash_screen.dart';
 
-void main() async {
+// 🔹 Step 1: main() function updated with dotenv.load()
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔸 .env फाइल लोड करा
+  await dotenv.load(fileName: ".env");
+
   runApp(const GoodNewsApp());
 }
 
