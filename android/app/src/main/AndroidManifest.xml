@@ -1,14 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-
-<!-- ✅ Internet Permission -->
+    <!-- ✅ Internet Permission (correct spelling) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Camera Permission -->
-    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <!-- Storage Permissions -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -55,7 +53,7 @@
             android:value="2" />
     </application>
 
-    <!-- Queries for Flutter compatibility -->
+    <!-- Queries for url_launcher and other intents -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
@@ -70,5 +68,15 @@
         <intent>
             <action android:name="android.intent.action.GET_CONTENT" />
         </intent>
+        <!-- 👇 url_launcher साठी आवश्यक -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
     </queries>
+
 </manifest>
