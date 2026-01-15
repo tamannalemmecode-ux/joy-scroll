@@ -1,6 +1,7 @@
+// 👇👇👇 FULL UPDATED HOME SCREEN CODE WITH AUTO-PLAY ON VIDEO TAB 👇👇👇
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // ✅ Ensure this is imported
 import 'package:good_news/core/services/api_service.dart';
 import 'package:good_news/core/services/user_service.dart';
 import 'package:good_news/core/services/preferences_service.dart';
@@ -17,10 +18,12 @@ import 'package:good_news/features/articles/presentation/widgets/social_post_car
 import 'package:good_news/features/articles/presentation/widgets/speed_dial_widget.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+// 👇👇 तुमच्या मागणीनुसार जोडलेल्या 3 ओळी
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -45,19 +48,18 @@ class _HomeScreenState extends State<HomeScreen>
   int _currentIndex = 0;
   int? _selectedCategoryId;
   bool _isSpeedDialOpen = false;
-
-  // 🔸 Removed static const — now using .env
-  late int _socialCategoryId;
-  late int _videoCategoryId;
-  late int _loadMoreThreshold;
-  late int _pageSize;
-  late int _preloadCount;
-  late List<String> _excludedCategories;
+  static const int SOCIAL_CATEGORY_ID = -1;
+  static const int VIDEO_CATEGORY_ID = -2;
+  static const int LOAD_MORE_THRESHOLD = 3;
+  static const int PAGE_SIZE = 25;
+  static const int PRELOAD_COUNT = 5;
+  static const List<String> EXCLUDED_CATEGORIES = ['Education', 'Environment', 'International'];
 
   final PageController _pageController = PageController(keepPage: true, viewportFraction: 1.0);
   late AnimationController _animationController;
   late Animation<double> _rotationAnimation;
   late ScrollController _categoryScrollController;
+
   final Map<String, List<Map<String, dynamic>>> _postComments = {};
   final Map<String, bool> _showCommentsMap = {};
   final Map<String, bool> _isLoadingCommentsMap = {};
@@ -65,31 +67,18 @@ class _HomeScreenState extends State<HomeScreen>
   final Set<String> _preloadedImages = {};
   List<Map<String, dynamic>> _categoryList = [];
 
+  // 👇 NEW: Keys to access individual video widgets
+  //final Map<String, GlobalKey<_VideoPostWidgetState>> _videoKeys = {};
+  final Map<String, GlobalKey<_VideoPostWidgetState>> _videoKeys = {};
+
   @override
   void initState() {
     super.initState();
-
-    // 🔸 Load .env values once at init
-    _loadEnvConfig();
-
     _categoryScrollController = ScrollController();
     _initializeAnimations();
     _refreshUserDisplayName();
     _loadInitialData();
     _pageController.addListener(_onPageChanged);
-  }
-
-  void _loadEnvConfig() {
-    _socialCategoryId = int.tryParse(dotenv.env['SOCIAL_CATEGORY_ID'] ?? '-1') ?? -1;
-    _videoCategoryId = int.tryParse(dotenv.env['VIDEO_CATEGORY_ID'] ?? '-2') ?? -2;
-    _loadMoreThreshold = int.tryParse(dotenv.env['LOAD_MORE_THRESHOLD'] ?? '3') ?? 3;
-    _pageSize = int.tryParse(dotenv.env['PAGE_SIZE'] ?? '25') ?? 25;
-    _preloadCount = int.tryParse(dotenv.env['PRELOAD_COUNT'] ?? '5') ?? 5;
-    _excludedCategories = (dotenv.env['EXCLUDED_CATEGORIES'] ?? '')
-        .split(',')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
   }
 
   @override
@@ -115,7 +104,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _preloadImages(List<Map<String, dynamic>> items, int startIndex) async {
     if (!mounted) return;
-    final endIndex = (startIndex + _preloadCount).clamp(0, items.length); // 🔸 PRELOAD_COUNT → _preloadCount
+    final endIndex = (startIndex + PRELOAD_COUNT).clamp(0, items.length);
     for (int i = startIndex; i < endIndex; i++) {
       if (i >= items.length) break;
       final item = items[i];
@@ -156,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen>
         final List<dynamic> categories = categoryResponse['categories'];
         _categoryMap = {
           for (final cat in categories)
-            if (!_excludedCategories.contains(cat['name'])) // 🔸 EXCLUDED_CATEGORIES → _excludedCategories
+            if (!EXCLUDED_CATEGORIES.contains(cat['name']))
               (cat['id'] as int): (cat['name'] ?? 'Unnamed') as String
         };
         _selectedCategoryIds =
@@ -185,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       if (mounted) setState(() => _isLoadingMore = true);
       final response = await ApiService.getUnifiedFeed(
-        limit: _pageSize, // 🔸 PAGE_SIZE → _pageSize
+        limit: PAGE_SIZE,
         cursor: _nextCursor,
         categoryId: _selectedCategoryId,
       );
@@ -219,9 +208,9 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       if (_selectedCategoryId == null) {
         _displayedItems = List.from(_allArticles);
-      } else if (_selectedCategoryId == _socialCategoryId) { // 🔸 SOCIAL_CATEGORY_ID → _socialCategoryId
+      } else if (_selectedCategoryId == SOCIAL_CATEGORY_ID) {
         _displayedItems = List.from(_socialPosts);
-      } else if (_selectedCategoryId == _videoCategoryId) { // 🔸 VIDEO_CATEGORY_ID → _videoCategoryId
+      } else if (_selectedCategoryId == VIDEO_CATEGORY_ID) {
         _displayedItems = List.from(_videoPosts);
       } else {
         _displayedItems = _allArticles
@@ -244,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen>
           setState(() {
             _socialPosts = postsList.map((post) => _formatSocialPost(post, locallyLikedPosts)).toList();
           });
-          if (_selectedCategoryId == _socialCategoryId) {
+          if (_selectedCategoryId == SOCIAL_CATEGORY_ID) {
             _updateDisplayedItems();
             _preloadImages(_socialPosts, 0);
           }
@@ -271,7 +260,7 @@ class _HomeScreenState extends State<HomeScreen>
       'created_at': post['created_at'],
       'likes': likesCount,
       'isLiked': apiLiked || localLiked,
-      'category_id': _socialCategoryId, // 🔸
+      'category_id': SOCIAL_CATEGORY_ID,
       'category': 'Social Posts',
       'image_url': post['image_url'],
     };
@@ -279,8 +268,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _loadVideoPosts() async {
     try {
-      final maxVideos = int.tryParse(dotenv.env['MAX_LOCAL_VIDEOS'] ?? '16') ?? 16; // 🔸 From .env
-      final List<Map<String, dynamic>> localVideos = List.generate(maxVideos, (index) {
+      final List<Map<String, dynamic>> localVideos = List.generate(16, (index) {
         final videoNum = index + 1;
         return {
           'type': 'video_post',
@@ -292,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen>
           'created_at': DateTime.now().subtract(Duration(hours: index * 2)).toIso8601String(),
           'likes': 100 + (index * 50),
           'isLiked': false,
-          'category_id': _videoCategoryId, // 🔸
+          'category_id': VIDEO_CATEGORY_ID,
           'category': 'Video',
           'video_url': 'assets/videos/ajay$videoNum.mp4',
         };
@@ -359,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen>
         _preloadImages(_displayedItems, page + 1);
       }
       final remainingItems = _displayedItems.length - page;
-      if (remainingItems <= _loadMoreThreshold && _hasMore && !_isLoadingMore) { // 🔸 LOAD_MORE_THRESHOLD → _loadMoreThreshold
+      if (remainingItems <= LOAD_MORE_THRESHOLD && _hasMore && !_isLoadingMore) {
         _loadMoreArticles();
       }
     }
@@ -424,15 +412,26 @@ class _HomeScreenState extends State<HomeScreen>
       _selectedCategoryId = categoryId;
       _currentIndex = 0;
     });
+
     if (jumpToPage && _pageController.hasClients) {
       _pageController.jumpToPage(0);
     }
-    if (categoryId == _socialCategoryId) {
+
+    if (categoryId == SOCIAL_CATEGORY_ID) {
       if (_socialPosts.isEmpty) await _loadSocialPosts();
       _updateDisplayedItems();
-    } else if (categoryId == _videoCategoryId) {
+    } else if (categoryId == VIDEO_CATEGORY_ID) {
       if (_videoPosts.isEmpty) await _loadVideoPosts();
       _updateDisplayedItems();
+
+      // Auto-play first video after a short delay
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (_videoPosts.isNotEmpty && mounted) {
+          final firstId = _videoPosts[0]['id'];
+          final key = _videoKeys[firstId];
+          key?.currentState?.forcePlay(); // ✅ Safe call
+        }
+      });
     } else {
       setState(() {
         _allArticles.clear();
@@ -442,6 +441,7 @@ class _HomeScreenState extends State<HomeScreen>
       await _loadMoreArticles(isInitial: true);
       _updateDisplayedItems();
     }
+
     if (_displayedItems.isNotEmpty && mounted) {
       _preloadImages(_displayedItems, 0);
     }
@@ -765,8 +765,8 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
               icon: Icons.video_library_outlined,
               activeIcon: Icons.video_library,
               label: 'Video',
-              isActive: _selectedCategoryId == _videoCategoryId,
-              onTap: () => _selectCategory(_videoCategoryId, jumpToPage: true),
+              isActive: _selectedCategoryId == VIDEO_CATEGORY_ID,
+              onTap: () => _selectCategory(VIDEO_CATEGORY_ID, jumpToPage: true),
             ),
             _buildNavItem(
               icon: Icons.add_circle_outline,
@@ -981,8 +981,10 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
   }
 
   Widget _buildVideoPost(Map<String, dynamic> post) {
+    final key = _videoKeys.putIfAbsent(post['id'], () => GlobalKey<_VideoPostWidgetState>());
     return RepaintBoundary(
       child: _VideoPostWidget(
+        key: key, // 👈 हे ओळ जोडा
         post: post,
         onToggleLike: () => _toggleLike(post),
         onToggleComments: () => _toggleCommentsForPost(post['id']),
@@ -1033,9 +1035,9 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              _selectedCategoryId == _socialCategoryId
+              _selectedCategoryId == SOCIAL_CATEGORY_ID
                   ? Icons.people_outline
-                  : _selectedCategoryId == _videoCategoryId
+                  : _selectedCategoryId == VIDEO_CATEGORY_ID
                   ? Icons.video_library_outlined
                   : Icons.article_outlined,
               size: 64,
@@ -1043,9 +1045,9 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
             ),
             const SizedBox(height: 16),
             Text(
-              _selectedCategoryId == _socialCategoryId
+              _selectedCategoryId == SOCIAL_CATEGORY_ID
                   ? 'No social posts yet!'
-                  : _selectedCategoryId == _videoCategoryId
+                  : _selectedCategoryId == VIDEO_CATEGORY_ID
                   ? 'No videos yet!'
                   : 'No articles in this category!',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -1055,9 +1057,9 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
             ),
             const SizedBox(height: 8),
             Text(
-              _selectedCategoryId == _socialCategoryId
+              _selectedCategoryId == SOCIAL_CATEGORY_ID
                   ? 'Be the first to share something positive!'
-                  : _selectedCategoryId == _videoCategoryId
+                  : _selectedCategoryId == VIDEO_CATEGORY_ID
                   ? 'Add videos to see them here!'
                   : _hasMore
                   ? 'Loading...'
@@ -1069,7 +1071,7 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _selectedCategoryId == _socialCategoryId
+              onPressed: _selectedCategoryId == SOCIAL_CATEGORY_ID
                   ? () async {
                 final result = await Navigator.push(
                   context,
@@ -1080,14 +1082,14 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
                   _updateDisplayedItems();
                 }
               }
-                  : _selectedCategoryId == _videoCategoryId
+                  : _selectedCategoryId == VIDEO_CATEGORY_ID
                   ? null
                   : _handleRefresh,
-              icon: Icon(_selectedCategoryId == _socialCategoryId ? Icons.edit : Icons.refresh),
+              icon: Icon(_selectedCategoryId == SOCIAL_CATEGORY_ID ? Icons.edit : Icons.refresh),
               label: Text(
-                _selectedCategoryId == _socialCategoryId
+                _selectedCategoryId == SOCIAL_CATEGORY_ID
                     ? 'Create Post'
-                    : _selectedCategoryId == _videoCategoryId
+                    : _selectedCategoryId == VIDEO_CATEGORY_ID
                     ? 'Coming Soon'
                     : 'Refresh',
               ),
@@ -1106,7 +1108,7 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
   List<Map<String, dynamic>> _buildCategoryList() {
     final List<Map<String, dynamic>> categoryList = [
       {'id': null, 'name': 'All'},
-      {'id': _socialCategoryId, 'name': '👥 Social'}, // 🔸
+      {'id': SOCIAL_CATEGORY_ID, 'name': '👥 Social'},
     ];
     if (_selectedCategoryIds.isNotEmpty) {
       for (var categoryId in _selectedCategoryIds) {
@@ -1121,7 +1123,7 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
   }
 }
 
-// ==================== VIDEO POST WIDGET (बटन विना) ====================
+// ==================== VIDEO POST WIDGET (WITH forcePlay SUPPORT) ====================
 class _VideoPostWidget extends StatefulWidget {
   final Map<String, dynamic> post;
   final VoidCallback onToggleLike;
@@ -1147,43 +1149,57 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
   VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _hasError = false;
+  bool _isInitializing = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeVideo();
-    });
   }
 
-  Future<void> _initializeVideo() async {
+  Future<void> _initializeVideoFromStart() async {
+    if (_isInitializing || _isInitialized) return;
+    _isInitializing = true;
+    if (_controller != null) {
+      await _controller!.pause();
+      await _controller!.dispose();
+      _controller = null;
+    }
     try {
       _controller = VideoPlayerController.asset(widget.post['video_url'])..setVolume(1.0);
       await _controller!.initialize();
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-          _hasError = false;
-        });
-        _controller!.setLooping(true);
-        _controller!.play(); // Always auto-play
+      if (!mounted) {
+        _isInitializing = false;
+        return;
       }
+      setState(() {
+        _isInitialized = true;
+        _hasError = false;
+      });
     } catch (e) {
-      print('❌ Video error: $e');
       if (mounted) {
         setState(() {
           _hasError = true;
           _isInitialized = false;
         });
       }
+    } finally {
+      _isInitializing = false;
     }
   }
 
-  void _togglePlayPause() {
-    if (_controller == null || !_isInitialized) return;
-    if (_controller!.value.isPlaying) {
-      _controller!.pause();
-    } else {
+  // 👇👇 NEW: Public method to force play from outside
+  void forcePlay() {
+    if (!_isInitialized) {
+      // Initialize + play
+      _initializeVideoFromStart().then((_) {
+        if (mounted && _controller != null) {
+          _controller!.seekTo(Duration.zero);
+          _controller!.play();
+        }
+      });
+    } else if (_controller != null) {
+      // Already initialized → just play
+      _controller!.seekTo(Duration.zero);
       _controller!.play();
     }
   }
@@ -1201,9 +1217,15 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
       key: Key(widget.post['id'].toString()),
       onVisibilityChanged: (visibilityInfo) {
         final visibleFraction = visibilityInfo.visibleFraction;
+        if (visibleFraction > 0.4 && !_isInitialized && !_isInitializing) {
+          _initializeVideoFromStart();
+        }
         if (visibleFraction > 0.6) {
-          if (_controller != null && _isInitialized && !_controller!.value.isPlaying) {
-            _controller!.play();
+          if (_isInitialized && _controller != null) {
+            if (!_controller!.value.isPlaying) {
+              _controller!.seekTo(Duration.zero);
+              _controller!.play();
+            }
           }
         } else {
           if (_controller != null && _controller!.value.isPlaying) {
@@ -1212,7 +1234,14 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
         }
       },
       child: GestureDetector(
-        onTap: _togglePlayPause,
+        onTap: () {
+          if (_controller == null || !_isInitialized) return;
+          if (_controller!.value.isPlaying) {
+            _controller!.pause();
+          } else {
+            _controller!.play();
+          }
+        },
         child: Container(
           color: Colors.black,
           child: Stack(
@@ -1229,15 +1258,15 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
                     ],
                   ),
                 )
-              else if (!_isInitialized || _controller == null)
-                const Center(child: CircularProgressIndicator(color: Colors.white))
-              else
+              else if (_isInitialized && _controller != null)
                 Center(
                   child: AspectRatio(
                     aspectRatio: _controller!.value.aspectRatio,
                     child: VideoPlayer(_controller!),
                   ),
-                ),
+                )
+              else
+                Container(color: Colors.black),
               Positioned(
                 top: 0,
                 left: 0,
@@ -1268,7 +1297,6 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
                   ),
                 ),
               ),
-              // ❌ NO PLAY/PAUSE BUTTON ANYWHERE — COMPLETELY REMOVED
               Positioned(
                 bottom: 30,
                 left: 16,
