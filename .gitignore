@@ -53,9 +53,19 @@ app.*.map.json
 key.properties
 *.jks
 *.keystore
+*.txt  # ←⚠️ हे जोडू नका! (खाली स्पष्टीकरण)
+keystore.txt          # ←✅ हे वेगळे जोडा
 .env
 
 # Logs & temp files
 *.tmp
 *.bak
 *.orig
+
+# Additional safety for release & config files
+android/key.properties
+android/app/keystore.jks
+android/app/upload-keystore.jks
+release/
+*.apk
+*.aab

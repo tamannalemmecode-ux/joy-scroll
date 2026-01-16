@@ -51,6 +51,7 @@ flutter:
     - assets/splash_animation.json
     - .env
 
+
 flutter_launcher_icons:
   android: true
   ios: true
