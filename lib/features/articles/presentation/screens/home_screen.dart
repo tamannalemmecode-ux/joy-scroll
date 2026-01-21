@@ -1,5 +1,4 @@
-// 👇👇👇 FULL UPDATED HOME SCREEN CODE WITH AUTO-PLAY ON VIDEO TAB 👇👇👇
-
+// 👇👇👇 FULL UPDATED HOME SCREEN CODE WITH AUTO-PLAY ON VIDEO TAB & HIDDEN FAB ON VIDEO TAB 👇👇👇
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:good_news/core/services/api_service.dart';
@@ -18,7 +17,7 @@ import 'package:good_news/features/articles/presentation/widgets/social_post_car
 import 'package:good_news/features/articles/presentation/widgets/speed_dial_widget.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-// 👇👇 तुमच्या मागणीनुसार जोडलेल्या 3 ओळी
+import 'package:good_news/features/social/presentation/screens/messages_screen.dart'; // 👈 हे जोडा
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -48,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen>
   int _currentIndex = 0;
   int? _selectedCategoryId;
   bool _isSpeedDialOpen = false;
+
   static const int SOCIAL_CATEGORY_ID = -1;
   static const int VIDEO_CATEGORY_ID = -2;
   static const int LOAD_MORE_THRESHOLD = 3;
@@ -67,8 +67,6 @@ class _HomeScreenState extends State<HomeScreen>
   final Set<String> _preloadedImages = {};
   List<Map<String, dynamic>> _categoryList = [];
 
-  // 👇 NEW: Keys to access individual video widgets
-  //final Map<String, GlobalKey<_VideoPostWidgetState>> _videoKeys = {};
   final Map<String, GlobalKey<_VideoPostWidgetState>> _videoKeys = {};
 
   @override
@@ -412,24 +410,21 @@ class _HomeScreenState extends State<HomeScreen>
       _selectedCategoryId = categoryId;
       _currentIndex = 0;
     });
-
     if (jumpToPage && _pageController.hasClients) {
       _pageController.jumpToPage(0);
     }
-
     if (categoryId == SOCIAL_CATEGORY_ID) {
       if (_socialPosts.isEmpty) await _loadSocialPosts();
       _updateDisplayedItems();
     } else if (categoryId == VIDEO_CATEGORY_ID) {
       if (_videoPosts.isEmpty) await _loadVideoPosts();
       _updateDisplayedItems();
-
       // Auto-play first video after a short delay
       Future.delayed(const Duration(milliseconds: 300), () {
         if (_videoPosts.isNotEmpty && mounted) {
           final firstId = _videoPosts[0]['id'];
           final key = _videoKeys[firstId];
-          key?.currentState?.forcePlay(); // ✅ Safe call
+          key?.currentState?.forcePlay();
         }
       });
     } else {
@@ -441,7 +436,6 @@ class _HomeScreenState extends State<HomeScreen>
       await _loadMoreArticles(isInitial: true);
       _updateDisplayedItems();
     }
-
     if (_displayedItems.isNotEmpty && mounted) {
       _preloadImages(_displayedItems, 0);
     }
@@ -707,7 +701,8 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
                 child: _buildCategoryChipsScrollable(categoryList),
               ),
             ),
-            if (_showFab) _buildSpeedDial(),
+            // ✅ CONDITIONAL FAB: Hide on Video Tab
+            if (_showFab && _selectedCategoryId != VIDEO_CATEGORY_ID) _buildSpeedDial(),
             if (_isLoadingMore && !_isInitialLoading)
               Positioned(
                 bottom: 85,
@@ -984,7 +979,7 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
     final key = _videoKeys.putIfAbsent(post['id'], () => GlobalKey<_VideoPostWidgetState>());
     return RepaintBoundary(
       child: _VideoPostWidget(
-        key: key, // 👈 हे ओळ जोडा
+        key: key,
         post: post,
         onToggleLike: () => _toggleLike(post),
         onToggleComments: () => _toggleCommentsForPost(post['id']),
@@ -1019,6 +1014,19 @@ ${url.isNotEmpty ? '🔗 $url' : ''}
               isScrollControlled: true,
               backgroundColor: Colors.transparent,
               builder: (context) => const FriendsModal(),
+            );
+          },
+        ),
+        // 👇👇 खालील नवीन action जोडा 👇👇
+        SpeedDialAction(
+          bottom: 110, // 👈 position slightly above "Add Friend"
+          icon: Icons.chat_bubble_outline,
+          label: 'Messages',
+          onTap: () {
+            _toggleSpeedDial();
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const MessagesScreen()),
             );
           },
         ),
@@ -1187,10 +1195,8 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
     }
   }
 
-  // 👇👇 NEW: Public method to force play from outside
   void forcePlay() {
     if (!_isInitialized) {
-      // Initialize + play
       _initializeVideoFromStart().then((_) {
         if (mounted && _controller != null) {
           _controller!.seekTo(Duration.zero);
@@ -1198,7 +1204,6 @@ class _VideoPostWidgetState extends State<_VideoPostWidget> with AutomaticKeepAl
         }
       });
     } else if (_controller != null) {
-      // Already initialized → just play
       _controller!.seekTo(Duration.zero);
       _controller!.play();
     }
